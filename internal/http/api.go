@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	metric "rate/internal/metrics"
 	"strconv"
 	"time"
 
@@ -24,11 +25,13 @@ func Handler() *http.ServeMux {
 }
 
 func rateLimiter(next func(w http.ResponseWriter, r *http.Request)) http.Handler {
-	limiter := rate.NewLimiter(rateLimit, burst)
+	start := time.Now()
 
+	limiter := rate.NewLimiter(rateLimit, burst)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !limiter.Allow() {
 			fmt.Println(r.Method, time.Now(), " - failed")
+			defer metric.ObserveCodeStatus(500, time.Since(start))
 
 			resp, _ := json.Marshal(Response{Result: "server kaput"})
 			w.WriteHeader(500)
@@ -56,6 +59,17 @@ type Response struct {
 func create(w http.ResponseWriter, r *http.Request) {
 	// time.Sleep(500 * time.Millisecond)
 
+	start := time.Now()
+
+	if r.ContentLength == 0 {
+		resp, _ := json.Marshal(Response{Result: "empty body"})
+		metric.ObserveCodeStatus(400, time.Since(start))
+		w.WriteHeader(400)
+		w.Write(resp)
+
+		return
+	}
+
 	decoder := json.NewDecoder(r.Body)
 	var data Request
 	err := decoder.Decode(&data)
@@ -63,6 +77,7 @@ func create(w http.ResponseWriter, r *http.Request) {
 		log.Panicln(err)
 
 		resp, _ := json.Marshal(Response{Result: "json unmarshal err"})
+		metric.ObserveCodeStatus(500, time.Since(start))
 		w.WriteHeader(500)
 		w.Write(resp)
 
@@ -74,6 +89,7 @@ func create(w http.ResponseWriter, r *http.Request) {
 
 	if !validate(id) || !validate(cnt) {
 		resp, _ := json.Marshal(Response{Result: "invalid"})
+		metric.ObserveCodeStatus(400, time.Since(start))
 		w.WriteHeader(400)
 		w.Write(resp)
 
@@ -81,6 +97,7 @@ func create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp, _ := json.Marshal(Response{Result: "created"})
+	metric.ObserveCodeStatus(200, time.Since(start))
 	w.WriteHeader(200)
 	w.Write(resp)
 }
