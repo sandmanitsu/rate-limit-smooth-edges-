@@ -31,11 +31,14 @@ func rateLimiter(next func(w http.ResponseWriter, r *http.Request)) http.Handler
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !limiter.Allow() {
 			fmt.Println(r.Method, time.Now(), " - failed")
-			defer metric.ObserveCodeStatus(500, time.Since(start))
+
+			defer func() {
+				metric.ObserveCodeStatus(500, time.Since(start))
+			}()
 
 			resp, _ := json.Marshal(Response{Result: "server kaput"})
 			w.WriteHeader(500)
-			w.Write(resp)
+			_, _ = w.Write(resp)
 
 			return
 		}
@@ -65,7 +68,7 @@ func create(w http.ResponseWriter, r *http.Request) {
 		resp, _ := json.Marshal(Response{Result: "empty body"})
 		metric.ObserveCodeStatus(400, time.Since(start))
 		w.WriteHeader(400)
-		w.Write(resp)
+		_, _ = w.Write(resp)
 
 		return
 	}
@@ -79,7 +82,7 @@ func create(w http.ResponseWriter, r *http.Request) {
 		resp, _ := json.Marshal(Response{Result: "json unmarshal err"})
 		metric.ObserveCodeStatus(500, time.Since(start))
 		w.WriteHeader(500)
-		w.Write(resp)
+		_, _ = w.Write(resp)
 
 		return
 	}
@@ -91,7 +94,7 @@ func create(w http.ResponseWriter, r *http.Request) {
 		resp, _ := json.Marshal(Response{Result: "invalid"})
 		metric.ObserveCodeStatus(400, time.Since(start))
 		w.WriteHeader(400)
-		w.Write(resp)
+		_, _ = w.Write(resp)
 
 		return
 	}
@@ -99,7 +102,7 @@ func create(w http.ResponseWriter, r *http.Request) {
 	resp, _ := json.Marshal(Response{Result: "created"})
 	metric.ObserveCodeStatus(200, time.Since(start))
 	w.WriteHeader(200)
-	w.Write(resp)
+	_, _ = w.Write(resp)
 }
 
 func validate(n int) bool {

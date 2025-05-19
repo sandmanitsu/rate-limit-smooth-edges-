@@ -7,8 +7,8 @@ const MIN_RPS = 0;
 const MAX_RPS = 100;
 
 function stages() {
-    const duration = 10 * 60 // min * sec = duration sec
-    const period = 2 * 60 // min * sec = period sec
+    const duration = 10 * 60    // min * sec = duration sec
+    const period = 3 * 60       // min * sec = period sec
     let stages = []
     const steps = 60;
 
