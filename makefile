@@ -1,4 +1,4 @@
-init:
+up:
 	cd docker && docker-compose up -d
 
 down:
