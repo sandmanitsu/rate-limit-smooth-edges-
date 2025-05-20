@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	metric "rate/internal/metrics"
 	"strconv"
@@ -32,13 +31,11 @@ func rateLimiter(next func(w http.ResponseWriter, r *http.Request)) http.Handler
 		if !limiter.Allow() {
 			fmt.Println(r.Method, time.Now(), " - failed")
 
-			defer func() {
-				metric.ObserveCodeStatus(500, time.Since(start))
-			}()
-
-			resp, _ := json.Marshal(Response{Result: "server kaput"})
-			w.WriteHeader(500)
-			_, _ = w.Write(resp)
+			metric.ObserveCodeStatus(500, time.Since(start))
+			response(w, Response{
+				Code:    http.StatusTooManyRequests,
+				Message: "to many request",
+			})
 
 			return
 		}
@@ -55,20 +52,20 @@ type Request struct {
 	Username  string `json:"username"`
 }
 
-type Response struct {
-	Result string `json:"result"`
-}
-
 func create(w http.ResponseWriter, r *http.Request) {
-	// time.Sleep(500 * time.Millisecond)
-
+	var resp Response
 	start := time.Now()
 
-	if r.ContentLength == 0 {
-		resp, _ := json.Marshal(Response{Result: "empty body"})
+	defer func() {
 		metric.ObserveCodeStatus(400, time.Since(start))
-		w.WriteHeader(400)
-		_, _ = w.Write(resp)
+		response(w, resp)
+	}()
+
+	if r.ContentLength == 0 {
+		resp = Response{
+			Code:    http.StatusBadRequest,
+			Message: "empty body",
+		}
 
 		return
 	}
@@ -77,36 +74,38 @@ func create(w http.ResponseWriter, r *http.Request) {
 	var data Request
 	err := decoder.Decode(&data)
 	if err != nil {
-		log.Panicln(err)
-
-		resp, _ := json.Marshal(Response{Result: "json unmarshal err"})
-		metric.ObserveCodeStatus(500, time.Since(start))
-		w.WriteHeader(500)
-		_, _ = w.Write(resp)
+		resp = Response{
+			Code:    http.StatusInternalServerError,
+			Message: "json unmarshal err",
+		}
 
 		return
 	}
 
+	if !validate(data) {
+		resp = Response{
+			Code:    http.StatusBadRequest,
+			Message: "invalid data",
+		}
+
+		return
+	}
+
+	resp = Response{
+		Code:    http.StatusOK,
+		Message: "created",
+	}
+}
+
+func validate(data Request) bool {
 	id, _ := strconv.Atoi(data.ProductId)
 	cnt, _ := strconv.Atoi(data.Count)
 
-	if !validate(id) || !validate(cnt) {
-		resp, _ := json.Marshal(Response{Result: "invalid"})
-		metric.ObserveCodeStatus(400, time.Since(start))
-		w.WriteHeader(400)
-		_, _ = w.Write(resp)
-
-		return
+	if id < 0 || id > 100 {
+		return false
 	}
 
-	resp, _ := json.Marshal(Response{Result: "created"})
-	metric.ObserveCodeStatus(200, time.Since(start))
-	w.WriteHeader(200)
-	_, _ = w.Write(resp)
-}
-
-func validate(n int) bool {
-	if n < 0 || n > 100 {
+	if cnt < 0 || cnt > 100 {
 		return false
 	}
 

@@ -3,11 +3,9 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"net/http"
 	"rate/internal/kafka"
 	metric "rate/internal/metrics"
-	"strconv"
 	"time"
 )
 
@@ -27,13 +25,19 @@ func HandlerWithQueue(producer *kafka.Producer) *http.ServeMux {
 }
 
 func (h *HandlerProducer) create(w http.ResponseWriter, r *http.Request) {
+	var resp Response
 	start := time.Now()
 
-	if r.ContentLength == 0 {
-		resp, _ := json.Marshal(Response{Result: "empty body"})
+	defer func() {
 		metric.ObserveCodeStatus(400, time.Since(start))
-		w.WriteHeader(400)
-		_, _ = w.Write(resp)
+		response(w, resp)
+	}()
+
+	if r.ContentLength == 0 {
+		resp = Response{
+			Code:    http.StatusBadRequest,
+			Message: "empty body",
+		}
 
 		return
 	}
@@ -42,24 +46,19 @@ func (h *HandlerProducer) create(w http.ResponseWriter, r *http.Request) {
 	var data Request
 	err := decoder.Decode(&data)
 	if err != nil {
-		log.Panicln(err)
-
-		resp, _ := json.Marshal(Response{Result: "json unmarshal err"})
-		metric.ObserveCodeStatus(500, time.Since(start))
-		w.WriteHeader(500)
-		_, _ = w.Write(resp)
+		resp = Response{
+			Code:    http.StatusInternalServerError,
+			Message: "json unmarshal err",
+		}
 
 		return
 	}
 
-	id, _ := strconv.Atoi(data.ProductId)
-	cnt, _ := strconv.Atoi(data.Count)
-
-	if !validate(id) || !validate(cnt) {
-		resp, _ := json.Marshal(Response{Result: "invalid"})
-		metric.ObserveCodeStatus(400, time.Since(start))
-		w.WriteHeader(400)
-		_, _ = w.Write(resp)
+	if !validate(data) {
+		resp = Response{
+			Code:    http.StatusBadRequest,
+			Message: "invalid data",
+		}
 
 		return
 	}
@@ -67,15 +66,16 @@ func (h *HandlerProducer) create(w http.ResponseWriter, r *http.Request) {
 	message, _ := json.Marshal(data)
 	err = h.producer.WriteMesage(context.Background(), message)
 	if err != nil {
-		resp, _ := json.Marshal(Response{Result: "failed produce message"})
+		resp = Response{
+			Code:    http.StatusBadRequest,
+			Message: "failed produce message",
+		}
 
-		metric.ObserveCodeStatus(500, time.Since(start))
-		w.WriteHeader(500)
-		_, _ = w.Write(resp)
+		return
 	}
 
-	resp, _ := json.Marshal(Response{Result: "created"})
-	metric.ObserveCodeStatus(200, time.Since(start))
-	w.WriteHeader(200)
-	_, _ = w.Write(resp)
+	resp = Response{
+		Code:    http.StatusOK,
+		Message: "created",
+	}
 }
